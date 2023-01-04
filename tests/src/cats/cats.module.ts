@@ -3,12 +3,11 @@ import { TenancyModule } from '../../../lib';
 import { CatsController } from './cats.controller';
 import { CatsService } from './cats.service';
 import { Cat, CatSchema } from './schemas/cat.schema';
+import { MongooseModule } from '@nestjs/mongoose';
 
 @Module({
-    imports: [
-        TenancyModule.forFeature([{ name: Cat.name, schema: CatSchema }])
-    ],
-    controllers: [CatsController],
-    providers: [CatsService],
+  imports: [MongooseModule.forFeature([{ name: Cat.name, schema: CatSchema }])],
+  controllers: [CatsController],
+  providers: [CatsService],
 })
-export class CatsModule { }
+export class CatsModule {}

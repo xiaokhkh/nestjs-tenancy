@@ -59,10 +59,10 @@ export class TenancyModule {
    * @returns {DynamicModule}
    * @memberof TenancyModule
    */
-  static forRootAsync(options: TenancyModuleAsyncOptions): DynamicModule {
+  static forRootAsync<T>(options: TenancyModuleAsyncOptions): DynamicModule {
     return {
       module: TenancyModule,
-      imports: [TenancyCoreModule.registerAsync(options)],
+      imports: [TenancyCoreModule.registerAsync<T>(options)],
     };
   }
 

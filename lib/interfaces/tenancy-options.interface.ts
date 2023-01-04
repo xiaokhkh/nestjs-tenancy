@@ -103,3 +103,7 @@ export interface TenancyValidator {
    */
   validate(): Promise<void>;
 }
+
+export interface IServiceManage<T> {
+  registerService(tenantId: string): T;
+}

@@ -20,12 +20,16 @@ import {
 import {
   CONNECTION_MAP,
   DEFAULT_HTTP_ADAPTER_HOST,
+  DEVICE_SERVICE_TOKEN,
   MODEL_DEFINITION_MAP,
+  SERVICE_MAP,
   TENANT_CONNECTION,
   TENANT_CONTEXT,
   TENANT_MODULE_OPTIONS,
+  TENANT_SERVICE,
+  TENANT_SERVICE_REGISTER,
 } from './tenancy.constants';
-import { ConnectionMap, ModelDefinitionMap } from './types';
+import { ConnectionMap, ModelDefinitionMap, ServiceMap } from './types';
 
 @Global()
 @Module({})
@@ -82,7 +86,7 @@ export class TenancyCoreModule implements OnApplicationShutdown {
         MODEL_DEFINITION_MAP,
       ],
     };
-
+    const ServiceProviders: Provider[] = [];
     const providers = [
       tenancyModuleOptionsProvider,
       tenantContextProvider,
@@ -90,6 +94,7 @@ export class TenancyCoreModule implements OnApplicationShutdown {
       modelDefinitionMapProvider,
       tenantConnectionProvider,
       httpAdapterHost,
+      ...ServiceProviders,
     ];
 
     return {
@@ -101,13 +106,13 @@ export class TenancyCoreModule implements OnApplicationShutdown {
 
   /**
    * Register for asynchronous modules
-   *
+   * T -> library service interface
    * @static
    * @param {TenancyModuleAsyncOptions} options
    * @returns {DynamicModule}
    * @memberof TenancyCoreModule
    */
-  static registerAsync(options: TenancyModuleAsyncOptions): DynamicModule {
+  static registerAsync<T>(options: TenancyModuleAsyncOptions): DynamicModule {
     /* Connection Map */
     const connectionMapProvider = this.createConnectionMapProvider();
 
@@ -119,6 +124,10 @@ export class TenancyCoreModule implements OnApplicationShutdown {
 
     /* Http Adaptor */
     const httpAdapterHost = this.createHttpAdapterProvider();
+
+    const serviceMapProvider = this.createServiceMapProvider();
+
+    /** Tenancy Service Map */
 
     /* Tenant Connection */
     const tenantConnectionProvider = {
@@ -144,6 +153,29 @@ export class TenancyCoreModule implements OnApplicationShutdown {
       ],
     };
 
+    const tenantServiceProvider = {
+      provide: TENANT_SERVICE,
+      useFactory: async (
+        tenantId: string,
+        moduleOptions: TenancyModuleOptions,
+        serviceMap: ServiceMap,
+        serviceRegister: (tenantId: string) => Promise<T>,
+      ) => {
+        return this.getService(
+          tenantId,
+          moduleOptions,
+          serviceMap,
+          serviceRegister,
+        );
+      },
+      inject: [
+        TENANT_CONTEXT,
+        TENANT_MODULE_OPTIONS,
+        SERVICE_MAP,
+        TENANT_SERVICE_REGISTER,
+      ],
+    };
+
     /* Asyc providers */
     const asyncProviders = this.createAsyncProviders(options);
 
@@ -151,8 +183,10 @@ export class TenancyCoreModule implements OnApplicationShutdown {
       ...asyncProviders,
       tenantContextProvider,
       connectionMapProvider,
+      serviceMapProvider,
       modelDefinitionMapProvider,
       tenantConnectionProvider,
+      tenantServiceProvider,
       httpAdapterHost,
     ];
 
@@ -190,11 +224,12 @@ export class TenancyCoreModule implements OnApplicationShutdown {
    * @returns {string}
    * @memberof TenancyCoreModule
    */
-  private static getTenant(
+  private static async getTenant(
     req: Request,
     moduleOptions: TenancyModuleOptions,
     adapterHost: HttpAdapterHost,
-  ): string {
+    deviceService: any,
+  ): Promise<string> {
     // Check if the adaptor is fastify
     const isFastifyAdaptor = this.adapterIsFastify(adapterHost);
 
@@ -215,7 +250,12 @@ export class TenancyCoreModule implements OnApplicationShutdown {
         throw new BadRequestException(`${tenantIdentifier} is mandatory`);
       }
 
-      return this.getTenantFromRequest(isFastifyAdaptor, req, tenantIdentifier);
+      return await this.getTenantFromRequest(
+        isFastifyAdaptor,
+        req,
+        tenantIdentifier,
+        deviceService,
+      );
     }
   }
 
@@ -230,10 +270,11 @@ export class TenancyCoreModule implements OnApplicationShutdown {
    * @returns
    * @memberof TenancyCoreModule
    */
-  private static getTenantFromRequest(
+  private static async getTenantFromRequest(
     isFastifyAdaptor: boolean,
     req: Request,
     tenantIdentifier: string,
+    deviceService: any,
   ) {
     let tenantId = '';
 
@@ -248,7 +289,24 @@ export class TenancyCoreModule implements OnApplicationShutdown {
       // Get the tenant id from the request
       tenantId = req.get(`${tenantIdentifier}`) || '';
     }
-
+    const { libraryCode, machineId } = Object.assign(
+      {},
+      req.params,
+      req.query,
+      req.body,
+    );
+    if (libraryCode) {
+      tenantId = libraryCode;
+    }
+    if (machineId) {
+      const deviceEntity = await deviceService.findOne(
+        {
+          uniqueId: machineId,
+        },
+        { join: true },
+      );
+      tenantId = deviceEntity.organRef.uniqueId;
+    }
     // Validate if tenant id is present
     if (this.isEmpty(tenantId)) {
       throw new BadRequestException(`${tenantIdentifier} is not supplied`);
@@ -375,6 +433,37 @@ export class TenancyCoreModule implements OnApplicationShutdown {
   }
 
   /**
+   * Get the connection for the tenant
+   *
+   * @private
+   * @static
+   * @param {String} tenantId
+   * @param {TenancyModuleOptions} moduleOptions
+   * @param {ConnectionMap} connMap
+   * @param {ModelDefinitionMap} modelDefMap
+   * @returns {Promise<Connection>}
+   * @memberof TenancyCoreModule
+   */
+  private static async getService<T = any>(
+    tenantId: string,
+    moduleOptions: TenancyModuleOptions,
+    serviceMap: ServiceMap,
+    serviceRegister,
+  ): Promise<T> {
+    if (moduleOptions.validator) {
+      await moduleOptions.validator(tenantId).validate();
+    }
+    const exists = serviceMap.has(tenantId);
+    if (exists) {
+      const service = serviceMap.get(tenantId) as T;
+      return service;
+    }
+    const service = await serviceRegister(tenantId);
+    serviceMap.set(tenantId, service);
+    return service;
+  }
+
+  /**
    * Create connection map provider
    *
    * @private
@@ -386,6 +475,13 @@ export class TenancyCoreModule implements OnApplicationShutdown {
     return {
       provide: CONNECTION_MAP,
       useFactory: (): ConnectionMap => new Map(),
+    };
+  }
+
+  private static createServiceMapProvider(): Provider {
+    return {
+      provide: SERVICE_MAP,
+      useFactory: (): ServiceMap => new Map(),
     };
   }
 
@@ -416,12 +512,18 @@ export class TenancyCoreModule implements OnApplicationShutdown {
     return {
       provide: TENANT_CONTEXT,
       scope: Scope.REQUEST,
-      useFactory: (
+      useFactory: async (
         req: Request,
         moduleOptions: TenancyModuleOptions,
         adapterHost: HttpAdapterHost,
-      ) => this.getTenant(req, moduleOptions, adapterHost),
-      inject: [REQUEST, TENANT_MODULE_OPTIONS, DEFAULT_HTTP_ADAPTER_HOST],
+        deviceService: any,
+      ) => this.getTenant(req, moduleOptions, adapterHost, deviceService),
+      inject: [
+        REQUEST,
+        TENANT_MODULE_OPTIONS,
+        DEFAULT_HTTP_ADAPTER_HOST,
+        DEVICE_SERVICE_TOKEN,
+      ],
     };
   }
 

@@ -8,7 +8,7 @@ import { DEFAULT_TENANT_DB_CONNECTION } from '../tenancy.constants';
  * @returns
  */
 export function getTenantModelToken(model: string) {
-  return `${model}Model`;
+  return `${model}Model-tenant`;
 }
 
 /**
