@@ -7,6 +7,7 @@ export const CONNECTION_MAP = 'ConnectionMap';
 
 export const TENANT_CONNECTION = 'TenantConnection';
 export const TENANT_MODULE_OPTIONS = 'TenantModuleOptions';
+export const MANUAL_TENANT_CONNECTION = "ManualTenantConnection"
 
 export const SERVICE_MAP = 'ServiceMap';
 export const TENANT_SERVICE = 'TenantService';

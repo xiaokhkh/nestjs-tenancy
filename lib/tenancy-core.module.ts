@@ -9,9 +9,9 @@ import {
 } from '@nestjs/common';
 import { Type } from '@nestjs/common/interfaces';
 import { HttpAdapterHost, ModuleRef, REQUEST } from '@nestjs/core';
-import { Request } from 'express';
 import { Connection, createConnection, Model } from 'mongoose';
 import { ConnectionOptions } from 'tls';
+import { Request } from 'express';
 import {
   TenancyModuleAsyncOptions,
   TenancyModuleOptions,
@@ -21,6 +21,7 @@ import {
   CONNECTION_MAP,
   DEFAULT_HTTP_ADAPTER_HOST,
   DEVICE_SERVICE_TOKEN,
+  MANUAL_TENANT_CONNECTION,
   MODEL_DEFINITION_MAP,
   SERVICE_MAP,
   TENANT_CONNECTION,
@@ -86,6 +87,21 @@ export class TenancyCoreModule implements OnApplicationShutdown {
         MODEL_DEFINITION_MAP,
       ],
     };
+    /**get connection with parameter tenantId */
+    const manualTenantConnectionFn = {
+      provide: MANUAL_TENANT_CONNECTION,
+      useFactory:
+        (
+          moduleOptions: TenancyModuleOptions,
+          connMap: ConnectionMap,
+          modelDefMap: ModelDefinitionMap,
+        ) =>
+        async (tenantId: string) =>
+          this.getConnection(tenantId, moduleOptions, connMap, modelDefMap),
+
+      inject: [TENANT_MODULE_OPTIONS, CONNECTION_MAP, MODEL_DEFINITION_MAP],
+    };
+
     const ServiceProviders: Provider[] = [];
     const providers = [
       tenancyModuleOptionsProvider,
@@ -94,6 +110,7 @@ export class TenancyCoreModule implements OnApplicationShutdown {
       modelDefinitionMapProvider,
       tenantConnectionProvider,
       httpAdapterHost,
+      manualTenantConnectionFn,
       ...ServiceProviders,
     ];
 
@@ -175,6 +192,20 @@ export class TenancyCoreModule implements OnApplicationShutdown {
         TENANT_SERVICE_REGISTER,
       ],
     };
+    /**get connection with parameter tenantId */
+    const manualTenantConnectionFn = {
+      provide: MANUAL_TENANT_CONNECTION,
+      useFactory:
+        (
+          moduleOptions: TenancyModuleOptions,
+          connMap: ConnectionMap,
+          modelDefMap: ModelDefinitionMap,
+        ) =>
+        async (tenantId: string) =>
+          this.getConnection(tenantId, moduleOptions, connMap, modelDefMap),
+
+      inject: [TENANT_MODULE_OPTIONS, CONNECTION_MAP, MODEL_DEFINITION_MAP],
+    };
 
     /* Asyc providers */
     const asyncProviders = this.createAsyncProviders(options);
@@ -187,6 +218,7 @@ export class TenancyCoreModule implements OnApplicationShutdown {
       modelDefinitionMapProvider,
       tenantConnectionProvider,
       tenantServiceProvider,
+      manualTenantConnectionFn,
       httpAdapterHost,
     ];
 
@@ -228,7 +260,6 @@ export class TenancyCoreModule implements OnApplicationShutdown {
     req: Request,
     moduleOptions: TenancyModuleOptions,
     adapterHost: HttpAdapterHost,
-    deviceService: any,
   ): Promise<string> {
     // Check if the adaptor is fastify
     const isFastifyAdaptor = this.adapterIsFastify(adapterHost);
@@ -254,7 +285,6 @@ export class TenancyCoreModule implements OnApplicationShutdown {
         isFastifyAdaptor,
         req,
         tenantIdentifier,
-        deviceService,
       );
     }
   }
@@ -274,7 +304,6 @@ export class TenancyCoreModule implements OnApplicationShutdown {
     isFastifyAdaptor: boolean,
     req: Request,
     tenantIdentifier: string,
-    deviceService: any,
   ) {
     let tenantId = '';
 
@@ -295,18 +324,6 @@ export class TenancyCoreModule implements OnApplicationShutdown {
       req.query,
       req.body,
     );
-    if (libraryCode) {
-      tenantId = libraryCode;
-    }
-    if (machineId) {
-      const deviceEntity = await deviceService.findOne(
-        {
-          uniqueId: machineId,
-        },
-        { join: true },
-      );
-      tenantId = deviceEntity.organRef.uniqueId;
-    }
     // Validate if tenant id is present
     if (this.isEmpty(tenantId)) {
       throw new BadRequestException(`${tenantIdentifier} is not supplied`);
@@ -517,13 +534,8 @@ export class TenancyCoreModule implements OnApplicationShutdown {
         moduleOptions: TenancyModuleOptions,
         adapterHost: HttpAdapterHost,
         deviceService: any,
-      ) => this.getTenant(req, moduleOptions, adapterHost, deviceService),
-      inject: [
-        REQUEST,
-        TENANT_MODULE_OPTIONS,
-        DEFAULT_HTTP_ADAPTER_HOST,
-        DEVICE_SERVICE_TOKEN,
-      ],
+      ) => this.getTenant(req, moduleOptions, adapterHost),
+      inject: [REQUEST, TENANT_MODULE_OPTIONS, DEFAULT_HTTP_ADAPTER_HOST],
     };
   }
 

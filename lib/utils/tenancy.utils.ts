@@ -34,3 +34,16 @@ export function getTenantConnectionToken(name?: string) {
     ? `${name}TenantConnection`
     : DEFAULT_TENANT_DB_CONNECTION;
 }
+
+
+
+/**
+ * manual get tenant model name formatted
+ *
+ * @export
+ * @param {string} model
+ * @returns
+ */
+export function manualGetTenantModelToken(model:string){
+  return `${model}manual-model-tenant`
+}

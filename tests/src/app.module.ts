@@ -39,14 +39,14 @@ class MockDeviceModule {}
 
 @Module({
   imports: [
-    MongooseModule.forRoot('mongodb://localhost:27017/test'),
+    MongooseModule.forRoot('mongodb://127.0.0.1:27017/test'),
     TenancyModule.forRootAsync<any>({
       imports: [MockServiceModule, MockDeviceModule],
       useFactory: async () => {
         return {
           tenantIdentifier: 'X-TENANT-ID',
           uri: (tenantId: string) =>
-            `mongodb://localhost/test-tenant-${tenantId}`,
+            `mongodb://127.0.0.1:27017/test-tenant-${tenantId}`,
           options: () => {},
           // validator: (tenantId: string) => {
           //   return () => true;

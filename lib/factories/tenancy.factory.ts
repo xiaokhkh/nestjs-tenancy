@@ -6,8 +6,17 @@ import {
   MODEL_DEFINITION_MAP,
   TENANT_CONNECTION,
 } from '../tenancy.constants';
-import { ConnectionMap, ModelDefinitionMap } from '../types';
-import { getTenantModelDefinitionToken, getTenantModelToken } from '../utils';
+import {
+  ConnectionMap,
+  ManualGetConnectionFn,
+  ModelDefinitionMap,
+} from '../types';
+import { MANUAL_TENANT_CONNECTION } from '../tenancy.constants';
+import {
+  getTenantModelDefinitionToken,
+  getTenantModelToken,
+  manualGetTenantModelToken,
+} from '../utils';
 
 export const createTenancyProviders = (
   definitions: ModelDefinition[],
@@ -46,6 +55,20 @@ export const createTenancyProviders = (
         );
       },
       inject: [TENANT_CONNECTION],
+    });
+
+    providers.push({
+      provide: manualGetTenantModelToken(name),
+      useFactory(manualGetConnectionFn: ManualGetConnectionFn) {
+        return async (tenantId: string) => {
+          const tenantConnection = await manualGetConnectionFn(tenantId);
+          return (
+            tenantConnection.models[name] ||
+            tenantConnection.model(name, schema, collection)
+          );
+        };
+      },
+      inject: [MANUAL_TENANT_CONNECTION],
     });
   }
 
